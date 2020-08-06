@@ -18,11 +18,11 @@ CAMERA_INTR_FILE = 'camera_intrinsics.txt'
 EXT_OUT_FILE = '.rgb.dist.png'
 
 
-def distort_image(path_img: str, cam_intr: np.ndarray, dist_coeff: np.ndarray) -> np.ndarray:
+def distort_image(img: np.ndarray, cam_intr: np.ndarray, dist_coeff: np.ndarray) -> np.ndarray:
     """Apply fisheye distortion to an image
 
     Args:
-        path_img (str): Path to an image to load
+        img (numpy.ndarray): BGR image. Shape: (H, W, 3)
         cam_intr (numpy.ndarray): The camera intrinsics matrix, in pixels: [[fx, 0, cx], [0, fx, cy], [0, 0, 1]]
                             Shape: (3, 3)
         dist_coeff (numpy.ndarray): The fisheye distortion coefficients, for OpenCV fisheye module.
@@ -34,28 +34,21 @@ def distort_image(path_img: str, cam_intr: np.ndarray, dist_coeff: np.ndarray) -
     assert cam_intr.shape == (3, 3)
     assert dist_coeff.shape == (4,)
 
-    img = cv2.imread(path_img)
     h, w, _ = img.shape
 
     # Get array of pixel co-ords
     xs = np.arange(w)
     ys = np.arange(h)
     xv, yv = np.meshgrid(xs, ys)
-    img_pts = np.stack((xv, yv), axis=0)  # shape (2, H, W)
-    img_pts = img_pts.reshape((2, -1))  # shape: (2, N)
-    img_pts = np.transpose(img_pts, (1, 0))  # Shape: (N, 2)
-    img_pts = np.expand_dims(img_pts, axis=0)  # shape: (1, N, 2)
+    img_pts = np.stack((xv, yv), axis=2)  # shape (H, W, 2)
+    img_pts = img_pts.reshape((-1, 1, 2))  # shape: (N, 1, 2)
 
     # Get the mapping from distorted pixels to undistorted pixels
-    undistorted_px = cv2.fisheye.undistortPoints(img_pts.astype(np.float32), cam_intr, dist_coeff)  # shape: (1, N, 2)
-    undistorted_px = np.squeeze(undistorted_px, axis=0)  # Shape: (N, 2)
-    undistorted_px = np.transpose(undistorted_px, (1, 0))  # Shape: (2, N)
-    zv = np.ones((1, undistorted_px.shape[1]), dtype=undistorted_px.dtype)  # Add homogenous co-ord
-    undistorted_px = np.concatenate((undistorted_px, zv), axis=0)  # Shape: (3, N)
-    undistorted_px = cam_intr @ undistorted_px  # Pixels projected to 3D, in homogenous coordinates (depth = 1), shape: (3, N)
-    undistorted_px = undistorted_px.reshape((3, h, w))  # Shape: (3, H, W)
-    undistorted_px = undistorted_px[:2, :, :]  # Shape: (2, H, W). Throw homogenous coord
-    undistorted_px = np.transpose(undistorted_px, (1, 2, 0))
+    undistorted_px = cv2.fisheye.undistortPoints(img_pts.astype(np.float32), cam_intr, dist_coeff)  # shape: (N, 1, 2)
+    undistorted_px = cv2.convertPointsToHomogeneous(undistorted_px)  # Shape: (N, 1, 3)
+    undistorted_px = np.tensordot(undistorted_px, cam_intr, axes=(2, 1))  # To camera coordinates, Shape: (N, 1, 3)
+    undistorted_px = cv2.convertPointsFromHomogeneous(undistorted_px)  # Shape: (N, 1, 2)
+    undistorted_px = undistorted_px.reshape((h, w, 2))  # Shape: (H, W, 2)
     undistorted_px = np.flip(undistorted_px, axis=2)  # flip x, y coordinates of the points as cv2 is height first
 
     # Map RGB values from input img using distorted pixel co-ordinates
@@ -96,19 +89,24 @@ def main(args):
     print(f'Loaded distortion coefficients: {D}')
 
     for f_img in image_filenames:
-        dist_img = distort_image(str(f_img), K, D)
+        img = cv2.imread(str(f_img))
+        dist_img = distort_image(img, K, D)
         out_filename = f_img.name[:-len(ext_images)] + EXT_OUT_FILE  # Convert .rgb.png to .dist.rgb.png
         out_filename = dir_output / out_filename
-        cv2.imwrite(str(out_filename), dist_img)
-        print(f'exported image: {out_filename}')
+        retval = cv2.imwrite(str(out_filename), dist_img)
+        if retval:
+            print(f'exported image: {out_filename}')
+        else:
+            raise RuntimeError(f'Error in saving file {out_filename}')
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Apply fisheye effect to all matching images in a directory')
-    parser.add_argument('-i', '--dir_images', required=True, help='Directory containing the images to distort',
-                        metavar='path/to/dir')
+    parser.add_argument('-i', '--dir_images', type=Path, required=True,
+                        help='Directory containing the images to distort',metavar='path/to/dir')
     parser.add_argument('-e', '--ext_images', default='.rgb.png', help='Filename extention of images to convert')
-    parser.add_argument('-o', '--dir_output', required=True, help='Path to save output images', metavar='path/to/dir')
+    parser.add_argument('-o', '--dir_output', type=Path, required=True,
+                        help='Path to save output images', metavar='path/to/dir')
     parser.add_argument('-c', '--config_file', default='distortion_parameters.yaml',
                         help='Path to config file with distortion params', metavar='path/to/config.yaml')
     parser.add_argument("-w", "--workers", type=int, default=0,
