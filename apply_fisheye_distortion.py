@@ -15,7 +15,6 @@ import numpy as np
 import scipy.interpolate
 
 CAMERA_INTR_FILE = 'camera_intrinsics.txt'
-EXT_OUT_FILE = '.rgb.dist.png'
 
 
 def distort_image(img: np.ndarray, cam_intr: np.ndarray, dist_coeff: np.ndarray) -> np.ndarray:
@@ -41,10 +40,10 @@ def distort_image(img: np.ndarray, cam_intr: np.ndarray, dist_coeff: np.ndarray)
     ys = np.arange(h)
     xv, yv = np.meshgrid(xs, ys)
     img_pts = np.stack((xv, yv), axis=2)  # shape (H, W, 2)
-    img_pts = img_pts.reshape((-1, 1, 2))  # shape: (N, 1, 2)
+    img_pts = img_pts.reshape((-1, 1, 2)).astype(np.float32)  # shape: (N, 1, 2)
 
     # Get the mapping from distorted pixels to undistorted pixels
-    undistorted_px = cv2.fisheye.undistortPoints(img_pts.astype(np.float32), cam_intr, dist_coeff)  # shape: (N, 1, 2)
+    undistorted_px = cv2.fisheye.undistortPoints(img_pts, cam_intr, dist_coeff)  # shape: (N, 1, 2)
     undistorted_px = cv2.convertPointsToHomogeneous(undistorted_px)  # Shape: (N, 1, 3)
     undistorted_px = np.tensordot(undistorted_px, cam_intr, axes=(2, 1))  # To camera coordinates, Shape: (N, 1, 3)
     undistorted_px = cv2.convertPointsFromHomogeneous(undistorted_px)  # Shape: (N, 1, 2)
@@ -56,6 +55,20 @@ def distort_image(img: np.ndarray, cam_intr: np.ndarray, dist_coeff: np.ndarray)
                      for chanel in range(3)]
     img_dist = np.dstack([interpolator(undistorted_px) for interpolator in interpolators])
     img_dist = img_dist.clip(0, 255).astype(np.uint8)
+
+    # Crop rectangle from resulting distorted image
+    # Get mapping from undistorted to distorted
+    distorted_px = cv2.convertPointsToHomogeneous(img_pts)  # Shape: (N, 1, 3)
+    cam_intr_inv = np.linalg.inv(cam_intr)
+    distorted_px = np.tensordot(distorted_px, cam_intr_inv, axes=(2, 1))  # To camera coordinates, Shape: (N, 1, 3)
+    distorted_px = cv2.convertPointsFromHomogeneous(distorted_px)  # Shape: (N, 1, 2)
+    distorted_px = cv2.fisheye.distortPoints(distorted_px, cam_intr, dist_coeff)  # shape: (N, 1, 2)
+    distorted_px = distorted_px.reshape((h, w, 2))
+    # Get the corners. Round values up/down accordingly to avoid invalid pixel selection.
+    top_left = np.ceil(distorted_px[0, 0, :]).astype(np.int)
+    bottom_right = np.floor(distorted_px[(h - 1), (w - 1), :]).astype(np.int)
+    img_dist = img_dist[top_left[1]:bottom_right[1], top_left[0]:bottom_right[0], :]
+
     return img_dist
 
 
@@ -91,8 +104,7 @@ def main(args):
     for f_img in image_filenames:
         img = cv2.imread(str(f_img))
         dist_img = distort_image(img, K, D)
-        out_filename = f_img.name[:-len(ext_images)] + EXT_OUT_FILE  # Convert .rgb.png to .dist.rgb.png
-        out_filename = dir_output / out_filename
+        out_filename = dir_output / f"{f_img.stem}.dist{f_img.suffix}"
         retval = cv2.imwrite(str(out_filename), dist_img)
         if retval:
             print(f'exported image: {out_filename}')
