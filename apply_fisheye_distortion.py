@@ -7,12 +7,12 @@ Note: fisheye is a new module that is different from old OpenCV 2.4 distortion e
 The dir of images to convert must contain the camera intrinsics, in pixels, in a text file.
 """
 import argparse
-import yaml
 from pathlib import Path
 
 import cv2
 import numpy as np
 import scipy.interpolate
+import yaml
 
 CAMERA_INTR_FILE = 'camera_intrinsics.txt'
 
@@ -103,6 +103,7 @@ def main(args):
 
     for f_img in image_filenames:
         img = cv2.imread(str(f_img))
+
         dist_img = distort_image(img, K, D)
         out_filename = dir_output / f"{f_img.stem}.dist{f_img.suffix}"
         retval = cv2.imwrite(str(out_filename), dist_img)
@@ -115,13 +116,11 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Apply fisheye effect to all matching images in a directory')
     parser.add_argument('-i', '--dir_images', type=Path, required=True,
-                        help='Directory containing the images to distort',metavar='path/to/dir')
+                        help='Directory containing the images to distort', metavar='path/to/dir')
     parser.add_argument('-e', '--ext_images', default='.rgb.png', help='Filename extention of images to convert')
     parser.add_argument('-o', '--dir_output', type=Path, required=True,
                         help='Path to save output images', metavar='path/to/dir')
     parser.add_argument('-c', '--config_file', default='distortion_parameters.yaml',
                         help='Path to config file with distortion params', metavar='path/to/config.yaml')
-    parser.add_argument("-w", "--workers", type=int, default=0,
-                        help="Number of processes to use. Defaults to the number of processors on the machine.")
     args = parser.parse_args()
     main(args)
