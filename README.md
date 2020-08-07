@@ -61,3 +61,8 @@ The dependencies can be installed via pip:
 pip install requirements.txt
 ```
 
+## Detailed Description
+From OpenCV [docs](https://docs.opencv.org/4.4.0/db/d58/group__calib3d__fisheye.html),
+here is the description of the fisheye camera model used to create the distortion. The
+distortion co-efficients `[k1, k2, k3, k4]` are detailed below:
+![distortion-description](images/fisheye-opencv-description.png)
