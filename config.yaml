@@ -1,3 +1,7 @@
+dir_input: images/
+dir_output: images/
+input_file_ext: .rgb.png
+
 distortion_parameters:
   # Ref: https://docs.opencv.org/4.4.0/db/d58/group__calib3d__fisheye.html
   # These are the distortion parameters of the fisheye camera model as defined in the fisheye module of OpenCV 4.4.0
@@ -11,3 +15,6 @@ resize_output:
   # We resize output to get exact aspect ratio back. Set to 0 to disable resize.
   h: 768
   w: 1024
+
+dev:
+  crop_output: True  # Whether to crop the output distorted image.
