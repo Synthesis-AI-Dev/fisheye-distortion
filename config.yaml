@@ -1,0 +1,13 @@
+distortion_parameters:
+  # Ref: https://docs.opencv.org/4.4.0/db/d58/group__calib3d__fisheye.html
+  # These are the distortion parameters of the fisheye camera model as defined in the fisheye module of OpenCV 4.4.0
+  k1: 0.17149
+  k2: -0.27191
+  k3: 0.25787
+  k4: -0.08054
+
+resize_output:
+  # The output of distortion script isn't exactly the aspect ratio of input due to rounding to integer pixel values.
+  # We resize output to get exact aspect ratio back. Set to 0 to disable resize.
+  h: 768
+  w: 1024
