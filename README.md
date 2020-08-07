@@ -8,8 +8,8 @@ As mentioned in the docs, the distortion is characterized by 4 parameters, `[k1,
 passed via the config file or command line arguments.
 
 ## Usage
-The arguments for the script are passed via the config file. They can be overriden from the command 
-line as well:
+The arguments for the script are passed via the config file. All the parameters in the
+ config file can be overriden from the command line:
 ```bash
 python apply_fisheye_distortion.py dir_input=images resize_output.h=1024 resize_output.w=768
 ```
@@ -27,7 +27,7 @@ $ python apply_fisheye_distortion.py dir_input=/data
 ```
 
 This will process all the images found in the container's `/data` directory. Modify the
-`docker_run.sh` script to change the directory to be mounted to `/data`.
+`docker_run.sh` script to change which host directory is mounted to the container's `/data`.
 
 ### Config file
 You can edit the config file, `config.yaml`, to customize the default parameters:
