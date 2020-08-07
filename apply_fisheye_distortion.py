@@ -1,4 +1,4 @@
-import argparse
+import json
 from pathlib import Path
 
 import cv2
@@ -6,7 +6,6 @@ import numpy as np
 from omegaconf import OmegaConf
 import scipy.interpolate
 
-CAMERA_INTR_FILE = 'camera_intrinsics.txt'
 CONFIG_FILE = 'config.yaml'
 
 
@@ -84,22 +83,23 @@ def main():
 
     dir_input = Path(conf.dir_input)
     dir_output = Path(conf.dir_output)
-    input_file_ext = conf.input_file_ext
+    input_rgb_ext = conf.input_rgb_ext
+    input_json_ext = conf.input_json_ext
     if not dir_input.exists() or not dir_input.is_dir():
         raise ValueError(f'Not a directory: {dir_input}')
     if not dir_output.exists():
         dir_output.mkdir(parents=True)
 
-    image_filenames = sorted(list(dir_input.glob('*' + input_file_ext)))
+    image_filenames = sorted(list(dir_input.glob('*' + input_rgb_ext)))
+    json_filenames = sorted(list(dir_input.glob('*' + input_json_ext)))
     num_images = len(image_filenames)
+    num_json = len(json_filenames)
     if num_images < 1:
-        raise ValueError(f'No images found in dir {dir_input} that match file extention {input_file_ext}')
+        raise ValueError(f'No images found in dir {dir_input} that match file extention {input_rgb_ext}')
+    elif num_images != num_json:
+        raise ValueError(f'The number of RGB images ({num_images}) and json files ({num_json}) is not equal.')
     else:
         print(f'Found {num_images} images. Applying distortion')
-
-    camera_intr_file = dir_input / CAMERA_INTR_FILE
-    K = np.loadtxt(str(camera_intr_file))
-    print(f'Loaded camera intrinsics: \n{K}')
 
     dist = conf.distortion_parameters
     D = np.array([dist.k1, dist.k2, dist.k3, dist.k4])
@@ -109,13 +109,20 @@ def main():
     resize_h = int(conf.resize_output.h)
     resize_w = int(conf.resize_output.w)
 
-    for f_img in image_filenames:
+    for f_img, f_json in zip(image_filenames, json_filenames):
+        # Load Camera intrinsics and RGB image
+        with open(f_json) as json_file:
+            metadata = json.load(json_file)
+            metadata = OmegaConf.create(metadata)
+        K = np.array(metadata.camera.intrinsics, dtype=np.float32)
         img = cv2.imread(str(f_img))
 
+        # Apply distortion
         dist_img = distort_image(img, K, D, crop_output=crop_output)
         if resize_h > 0 and resize_w > 0 and crop_output is True:
             dist_img = cv2.resize(dist_img, (resize_w, resize_h), cv2.INTER_CUBIC)
 
+        # Save Result
         out_filename = dir_output / f"{f_img.stem}.dist{f_img.suffix}"
         retval = cv2.imwrite(str(out_filename), dist_img)
         if retval:

@@ -1,6 +1,7 @@
 dir_input: images/
 dir_output: images/
-input_file_ext: .rgb.png
+input_rgb_ext: .rgb.png
+input_json_ext: .json
 
 distortion_parameters:
   # Ref: https://docs.opencv.org/4.4.0/db/d58/group__calib3d__fisheye.html
