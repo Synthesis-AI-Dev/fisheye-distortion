@@ -1,11 +1,3 @@
-"""This script creates fisheye distortion in images, using the OpenCV 4.4 fisheye camera model
-
-Look at equations in detailed description at:
-https://docs.opencv.org/4.4.0/db/d58/group__calib3d__fisheye.html
-Note: fisheye is a new module that is different from old OpenCV 2.4 distortion equations
-
-The dir of images to convert must contain the camera intrinsics, in pixels, in a text file.
-"""
 import argparse
 from pathlib import Path
 
@@ -73,9 +65,19 @@ def distort_image(img: np.ndarray, cam_intr: np.ndarray, dist_coeff: np.ndarray)
 
 
 def main(args):
-    dir_images = Path(args.dir_images)
-    dir_output = Path(args.dir_output)
-    config_file = Path(args.config_file)
+    """This script creates fisheye distortion in images, using the OpenCV 4.4 fisheye camera model
+    Look at equations in detailed description at: https://docs.opencv.org/4.4.0/db/d58/group__calib3d__fisheye.html
+
+    The dir of images to convert must contain the camera intrinsics, in pixels, in a text file.
+    The dimensions of output of distortion is ~58% of input image and may not be of the exact same aspect ratio due
+    to rounding of pixel co-ordinate. To counter that, we resize the output according to config file.
+
+    Args:
+        args: object from argparse
+    """
+    dir_images = args.dir_images
+    dir_output = args.dir_output
+    config_file = args.config_file
     ext_images = args.ext_images
 
     if not dir_images.exists() or not dir_images.is_dir():
@@ -97,14 +99,21 @@ def main(args):
     print(f'Loaded camera intrinsics: \n{K}')
 
     with open(config_file) as fd:
-        dist = yaml.load(fd, Loader=yaml.Loader)
+        config = yaml.load(fd, Loader=yaml.Loader)
+    dist = config['distortion_parameters']
     D = np.array([dist['k1'], dist['k2'], dist['k3'], dist['k4']])
     print(f'Loaded distortion coefficients: {D}')
+
+    resize_h = int(config['resize_output']['h'])
+    resize_w = int(config['resize_output']['w'])
 
     for f_img in image_filenames:
         img = cv2.imread(str(f_img))
 
         dist_img = distort_image(img, K, D)
+        if resize_h > 0:
+            dist_img = cv2.resize(dist_img, (resize_w, resize_h), cv2.INTER_CUBIC)
+
         out_filename = dir_output / f"{f_img.stem}.dist{f_img.suffix}"
         retval = cv2.imwrite(str(out_filename), dist_img)
         if retval:
@@ -120,7 +129,7 @@ if __name__ == "__main__":
     parser.add_argument('-e', '--ext_images', default='.rgb.png', help='Filename extention of images to convert')
     parser.add_argument('-o', '--dir_output', type=Path, required=True,
                         help='Path to save output images', metavar='path/to/dir')
-    parser.add_argument('-c', '--config_file', default='distortion_parameters.yaml',
+    parser.add_argument('-c', '--config_file', type=Path, default='config.yaml',
                         help='Path to config file with distortion params', metavar='path/to/config.yaml')
     args = parser.parse_args()
     main(args)
