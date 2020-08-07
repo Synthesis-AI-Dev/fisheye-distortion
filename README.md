@@ -14,7 +14,23 @@ line as well:
 python apply_fisheye_distortion.py dir_input=images resize_output.h=1024 resize_output.w=768
 ```
 
-Edit the config file, `config.yaml`, to customize the parameters:
+Alternately, you can use the provided dockerfile. 
+```bash
+# Build the docker image
+bash docker_build.sh
+
+# Run the docker image
+bash docker_run.sh
+
+# Inside container
+$ python apply_fisheye_distortion.py dir_input=/data
+```
+
+This will process all the images found in the container's `/data` directory. Modify the
+`docker_run.sh` script to change the directory to be mounted to `/data`.
+
+### Config file
+You can edit the config file, `config.yaml`, to customize the default parameters:
 ```yaml
 dir_input: images/
 dir_output: images/
@@ -45,13 +61,3 @@ The dependencies can be installed via pip:
 pip install requirements.txt
 ```
 
-Alternately, you can use the provided dockerfile. 
-```bash
-# Build the docker image
-bash docker_build.sh
-
-# Run the docker image
-bash docker_run.sh
-```
-
-The docker container will load all images in `./images` to its `/data` directory.

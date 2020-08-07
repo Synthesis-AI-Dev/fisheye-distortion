@@ -6,4 +6,5 @@
 docker run --rm -it --init \
   --mount type=bind,src=$PWD/images,dst=/data \
   --name fisheye \
+  -w /opt/fisheye-distortion \
   fisheye:1.0 /bin/bash
