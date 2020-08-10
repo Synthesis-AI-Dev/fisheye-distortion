@@ -85,13 +85,13 @@ def main():
     dir_output = Path(conf.dir_output)
     input_rgb_ext = conf.input_rgb_ext
     input_json_ext = conf.input_json_ext
-    if not dir_input.exists() or not dir_input.is_dir():
+    if not dir_input.is_dir():
         raise ValueError(f'Not a directory: {dir_input}')
     if not dir_output.exists():
         dir_output.mkdir(parents=True)
 
-    image_filenames = sorted(list(dir_input.glob('*' + input_rgb_ext)))
-    json_filenames = sorted(list(dir_input.glob('*' + input_json_ext)))
+    image_filenames = sorted(dir_input.glob('*' + input_rgb_ext))
+    json_filenames = sorted(dir_input.glob('*' + input_json_ext))
     num_images = len(image_filenames)
     num_json = len(json_filenames)
     if num_images < 1:
@@ -111,7 +111,7 @@ def main():
 
     for f_img, f_json in zip(image_filenames, json_filenames):
         # Load Camera intrinsics and RGB image
-        with open(f_json) as json_file:
+        with f_json.open() as json_file:
             metadata = json.load(json_file)
             metadata = OmegaConf.create(metadata)
         K = np.array(metadata.camera.intrinsics, dtype=np.float32)
