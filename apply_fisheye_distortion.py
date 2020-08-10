@@ -119,7 +119,7 @@ def main():
 
         # Apply distortion
         dist_img = distort_image(img, K, D, crop_output=crop_output)
-        if resize_h > 0 and resize_w > 0 and crop_output is True:
+        if resize_h > 0 and resize_w > 0:
             dist_img = cv2.resize(dist_img, (resize_w, resize_h), cv2.INTER_CUBIC)
 
         # Save Result
