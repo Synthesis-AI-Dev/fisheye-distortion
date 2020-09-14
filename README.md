@@ -34,7 +34,8 @@ You can edit the config file, `config.yaml`, to customize the default parameters
 ```yaml
 dir_input: images/
 dir_output: images/
-input_file_ext: .rgb.png
+input_rgb_ext: .rgb.png  # Distortion will be applied to all images matching this extension
+input_json_ext: .json  # The camera intrinsics are loaded from this json file
 
 distortion_parameters:
   # Ref: https://docs.opencv.org/4.4.0/db/d58/group__calib3d__fisheye.html
