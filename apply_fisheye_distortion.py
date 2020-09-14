@@ -1,3 +1,5 @@
+import concurrent.futures
+import itertools
 import json
 from pathlib import Path
 
@@ -5,11 +7,12 @@ import cv2
 import numpy as np
 from omegaconf import OmegaConf
 import scipy.interpolate
+import tifffile
 
 CONFIG_FILE = 'config.yaml'
 
 
-def distort_image(img: np.ndarray, cam_intr: np.ndarray, dist_coeff: np.ndarray, crop_output: bool=True) -> np.ndarray:
+def distort_image(img: np.ndarray, cam_intr: np.ndarray, dist_coeff: np.ndarray, crop_output: bool = True) -> np.ndarray:
     """Apply fisheye distortion to an image
 
     Args:
@@ -27,7 +30,16 @@ def distort_image(img: np.ndarray, cam_intr: np.ndarray, dist_coeff: np.ndarray,
     assert cam_intr.shape == (3, 3)
     assert dist_coeff.shape == (4,)
 
-    h, w, _ = img.shape
+    imshape = img.shape
+    if len(imshape) == 3:
+        h, w, chan = imshape
+    elif len(imshape) == 2:
+        h, w = imshape
+        chan = 1
+    else:
+        raise RuntimeError(f'Image has unsupported shape: {imshape}. Valid shapes: (H, W), (H, W, N)')
+
+    imdtype = img.dtype
 
     # Get array of pixel co-ords
     xs = np.arange(w)
@@ -45,10 +57,22 @@ def distort_image(img: np.ndarray, cam_intr: np.ndarray, dist_coeff: np.ndarray,
     undistorted_px = np.flip(undistorted_px, axis=2)  # flip x, y coordinates of the points as cv2 is height first
 
     # Map RGB values from input img using distorted pixel co-ordinates
-    interpolators = [scipy.interpolate.RegularGridInterpolator((ys, xs), img[:, :, chanel], bounds_error=False, fill_value=0)
-                     for chanel in range(3)]
+    if chan == 1:
+        img = np.expand_dims(img, 2)
+    interpolators = [scipy.interpolate.RegularGridInterpolator((ys, xs), img[:, :, channel], bounds_error=False, fill_value=0)
+                     for channel in range(chan)]
     img_dist = np.dstack([interpolator(undistorted_px) for interpolator in interpolators])
-    img_dist = img_dist.clip(0, 255).astype(np.uint8)
+
+    if imdtype == np.uint8:
+        # RGB Image
+        img_dist = img_dist.clip(0, 255).astype(np.uint8)
+    if imdtype == np.uint16:
+        # Mask
+        img_dist = img_dist.clip(0, 65535).astype(np.uint16)
+    elif imdtype == np.float16 or imdtype == np.float32 or imdtype == np.float64:
+        img_dist = img_dist.astype(imdtype)
+    else:
+        raise RuntimeError(f'Unsupported dtype for image: {imdtype}')
 
     if crop_output:
         # Crop rectangle from resulting distorted image
@@ -64,7 +88,46 @@ def distort_image(img: np.ndarray, cam_intr: np.ndarray, dist_coeff: np.ndarray,
         bottom_right = np.floor(distorted_px[(h - 1), (w - 1), :]).astype(np.int)
         img_dist = img_dist[top_left[1]:bottom_right[1], top_left[0]:bottom_right[0], :]
 
+    if chan == 1:
+        img_dist = img_dist[:, :, 0]
+
     return img_dist
+
+
+def process_file(f_json: Path, f_img: Path, dir_output: Path, dist_coeff: np.ndarray, crop_output: bool, resize_h: int,
+                 resize_w: int):
+    """Apply fisheye effect to file and save output
+    Args:
+        f_json (Path): Json file containing camera intrinsics
+        f_img (Path): Image to distort
+        dir_output (Path): Which dir to store outputs in
+        dist_coeff (numpy.ndarray): The distortion coefficients. Shape: (1, 4).
+        crop_output (bool): Whether the output should be cropped
+        resize_w (int): The width to resize distorted image to. Pass 0 to disable resize.
+        resize_h (int): The height to resize distorted image to. Pass 0 to disable resize.
+    """
+    # Load Camera intrinsics and RGB image
+    with f_json.open() as json_file:
+        metadata = json.load(json_file)
+        metadata = OmegaConf.create(metadata)
+    K = np.array(metadata.camera.intrinsics, dtype=np.float32)
+    img = cv2.imread(str(f_img), cv2.IMREAD_UNCHANGED | cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
+
+    # Apply distortion
+    dist_img = distort_image(img, K, dist_coeff, crop_output=crop_output)
+    if resize_h > 0 and resize_w > 0:
+        dist_img = cv2.resize(dist_img, (resize_w, resize_h), cv2.INTER_CUBIC)
+
+    # Save Result
+    out_filename = dir_output / f"{f_img.stem}.dist{f_img.suffix}"
+    if f_img.suffix == '.tif' or f_img.suffix == '.tiff':
+        tifffile.imsave(out_filename, dist_img, compress=1)
+    else:
+        retval = cv2.imwrite(str(out_filename), dist_img)
+        if retval:
+            print(f'exported image: {out_filename}')
+        else:
+            raise RuntimeError(f'Error in saving file {out_filename}')
 
 
 def main():
@@ -109,26 +172,16 @@ def main():
     resize_h = int(conf.resize_output.h)
     resize_w = int(conf.resize_output.w)
 
-    for f_img, f_json in zip(image_filenames, json_filenames):
-        # Load Camera intrinsics and RGB image
-        with f_json.open() as json_file:
-            metadata = json.load(json_file)
-            metadata = OmegaConf.create(metadata)
-        K = np.array(metadata.camera.intrinsics, dtype=np.float32)
-        img = cv2.imread(str(f_img))
-
-        # Apply distortion
-        dist_img = distort_image(img, K, D, crop_output=crop_output)
-        if resize_h > 0 and resize_w > 0:
-            dist_img = cv2.resize(dist_img, (resize_w, resize_h), cv2.INTER_CUBIC)
-
-        # Save Result
-        out_filename = dir_output / f"{f_img.stem}.dist{f_img.suffix}"
-        retval = cv2.imwrite(str(out_filename), dist_img)
-        if retval:
-            print(f'exported image: {out_filename}')
-        else:
-            raise RuntimeError(f'Error in saving file {out_filename}')
+    if int(conf.workers) > 0:
+        max_workers = int(conf.workers)
+    else:
+        max_workers = None
+    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+        for _ in executor.map(process_file, json_filenames, image_filenames, itertools.repeat(dir_output),
+                                        itertools.repeat(D), itertools.repeat(crop_output), itertools.repeat(resize_h),
+                                        itertools.repeat(resize_w)):
+            # Catch any error raised in processes
+            pass
 
 
 if __name__ == "__main__":
