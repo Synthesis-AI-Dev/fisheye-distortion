@@ -10,11 +10,13 @@ passed via the config file or command line arguments.
 ## Usage
 The arguments for the script are passed via the config file. All the parameters in the
  config file can be overriden from the command line:
+ 
 ```bash
-python apply_fisheye_distortion.py dir_input=images resize_output.h=1024 resize_output.w=768
+python apply_fisheye_distortion.py dir_input=samples input.info=".info.json"
 ```
 
 Alternately, you can use the provided dockerfile. 
+
 ```bash
 # Build the docker image
 bash docker_build.sh
@@ -31,11 +33,20 @@ This will process all the images found in the container's `/data` directory. Mod
 
 ### Config file
 You can edit the config file, `config.yaml`, to customize the default parameters:
+
 ```yaml
-dir_input: images/
-dir_output: images/
-input_rgb_ext: .rgb.png  # Distortion will be applied to all images matching this extension
-input_json_ext: .json  # The camera intrinsics are loaded from this json file
+dir_input: samples/
+dir_output: samples/
+input:
+  # Distortion will be applied to these files (except info).
+  # Set their name to null to disable distorting those images
+  rgb: .rgb.png
+  segments: .segments.png  # Mask of all objects in scene. 8 or 16 bit PNG.
+  info: .json  # Contains camera intrinsics
+
+workers: 0  # How many workers to use to convert files. 0 for all cores.
+
+crop_and_resize_output: True  # Disable to get original distorted image
 
 distortion_parameters:
   # Ref: https://docs.opencv.org/4.4.0/db/d58/group__calib3d__fisheye.html
@@ -45,19 +56,15 @@ distortion_parameters:
   k3: 0.25787
   k4: -0.08054
 
-resize_output:
-  # The output of distortion script isn't exactly the aspect ratio of input due to rounding to integer pixel values.
-  # We resize output to get exact aspect ratio back. Set to 0 to disable resize.
-  h: 768
-  w: 1024
-
-dev:
-  crop_output: True  # Whether to crop the output distorted image.
-
+hydra:
+    output_subdir: null  # Disable saving of config files. We'll do that ourselves.
+    run:
+        dir: .  # Set working dir to current directory
 ```
 
 ## Install
-The dependencies can be installed via pip:
+This script requires Python 3.7 or greater. The dependencies can be installed via pip:
+
 ```bash
 pip install requirements.txt
 ```
