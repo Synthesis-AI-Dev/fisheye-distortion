@@ -1,8 +1,15 @@
-dir_input: images/
-dir_output: images/
-input_rgb_ext: .rgb.png  # Distortion will be applied to all images matching this extension
-input_json_ext: .json  # The camera intrinsics are loaded from this json file
+dir_input: samples/
+dir_output: samples/
+input:
+  # Distortion will be applied to these files (except info).
+  # Set their name to null to disable distorting those images
+  rgb: .rgb.png
+  segments: .segments.png  # Mask of all objects in scene. 8 or 16 bit PNG.
+  info: .json  # Contains camera intrinsics
+
 workers: 0  # How many workers to use to convert files. 0 for all cores.
+
+crop_and_resize_output: True  # Disable to get original distorted image
 
 distortion_parameters:
   # Ref: https://docs.opencv.org/4.4.0/db/d58/group__calib3d__fisheye.html
@@ -12,11 +19,7 @@ distortion_parameters:
   k3: 0.25787
   k4: -0.08054
 
-resize_output:
-  # The output of distortion script isn't exactly the aspect ratio of input due to rounding to integer pixel values.
-  # We resize output to get exact aspect ratio back. Set to 0 to disable resize.
-  h: 768
-  w: 1024
-
-dev:
-  crop_output: True  # Whether to crop the output distorted image.
+hydra:
+    output_subdir: null  # Disable saving of config files. We'll do that ourselves.
+    run:
+        dir: .  # Set working dir to current directory
