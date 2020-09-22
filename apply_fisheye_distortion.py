@@ -2,9 +2,8 @@ import concurrent.futures
 import enum
 import itertools
 import json
-from dataclasses import dataclass
+import logging
 from pathlib import Path
-from typing import Union
 
 import cv2
 import hydra
@@ -117,7 +116,8 @@ def _process_file(f_json: Path, f_img: Path, dir_output: Path, dist_coeff: np.nd
         dir_output (Path): Which dir to store outputs in
         dist_coeff (numpy.ndarray): The distortion coefficients. Shape: (1, 4).
         mode (DistortMode): Which type of interpolation to use for distortion.
-                            RGB images = linear, Mask/Surface Normals/Depth = nearest
+                              - Linear -> RGB images
+                              - Nearest -> Masks, Surface Normals and Depth images
         crop_resize_output (bool): Whether the output should be cropped to rectange and resized to original dimensions
     """
     # Load Camera intrinsics and RGB image
@@ -139,59 +139,8 @@ def _process_file(f_json: Path, f_img: Path, dir_output: Path, dist_coeff: np.nd
         tifffile.imsave(out_filename, dist_img, compress=1)
     else:
         retval = cv2.imwrite(str(out_filename), dist_img)
-        if retval:
-            pass
-            # print(f'exported image: {out_filename}')
-        else:
+        if not retval:
             raise RuntimeError(f'Error in saving file {out_filename}')
-
-
-def process_files(f_json: Path, f_rgb: Union[Path, None], f_segments: Union[Path, None], dir_output: Path,
-                  dist_coeff: np.ndarray, crop_resize_output: bool):
-    """Apply fisheye effect to different file types (RGB, segments, etc) and save output
-    Args:
-        f_json (Path): Json file containing camera intrinsics
-        f_rgb (Path or None): RGB Image to distort. Pass None to skip this file.
-        f_segments (Path or None): Mask (segments) to distort. Pass None to skip this file.
-        dir_output (Path): Which dir to store outputs in
-        dist_coeff (numpy.ndarray): The distortion coefficients. Shape: (1, 4).
-        crop_resize_output (bool): Whether the output should be cropped to rectange and resized to original dimensions
-    """
-    @dataclass
-    class FileMode:
-        path: Union[Path, None]
-        mode: DistortMode
-
-    _f_rgb = FileMode(f_rgb, DistortMode.LINEAR)
-    _f_segments = FileMode(f_segments, DistortMode.NEAREST)
-
-    list_files = [_f_rgb, _f_segments]
-    for _f in list_files:
-        _process_file(f_json=f_json, f_img=_f.path, dir_output=dir_output, dist_coeff=dist_coeff, mode=_f.mode,
-                      crop_resize_output=crop_resize_output)
-
-
-def check_num_images(input_file_ext: str, dir_input: Path, num_json: int):
-    """Check that the number of images of a given type are equal to number of json files in the input directory"""
-    if input_file_ext is None:
-        image_filenames = itertools.repeat(None)
-        num_images = 0
-    else:
-        image_filenames = sorted(dir_input.glob('*' + input_file_ext))
-
-        num_images = len(image_filenames)
-        if num_images < 1:
-            raise ValueError(f'No images found. Searched:\n'
-                             f'  dir: "{dir_input}"\n'
-                             f'  file extention: "{input_file_ext}"')
-        elif num_images != num_json:
-            raise ValueError(f'Unequal number of json files and images:\n'
-                             f'  num json: {num_json}\n'
-                             f'  num images: {num_images}\n'
-                             f'  dir: "{dir_input}"\n'
-                             f'  file extention: "{input_file_ext}"')
-
-    return image_filenames, num_images
 
 
 @hydra.main(config_path='.', config_name='config')
@@ -205,50 +154,70 @@ def main(cfg: DictConfig):
 
     The parameters in config file can be modified from the command line.
     """
-    # base_conf = OmegaConf.load(CONFIG_FILE)
-    # cli_conf = OmegaConf.from_cli()
-    # conf = OmegaConf.merge(base_conf, cli_conf)
+    log = logging.getLogger(__name__)
 
-    dir_input = Path(cfg.dir_input)
-    dir_output = Path(cfg.dir_output)
-    input_rgb_ext = cfg.input.rgb
-    input_segments_ext = cfg.input.segments
-    input_json_ext = cfg.input.info
-    if not dir_input.is_dir():
-        raise ValueError(f'Not a directory: {dir_input}')
-    if not dir_output.exists():
-        dir_output.mkdir(parents=True)
-
-    json_filenames = sorted(dir_input.glob('*' + input_json_ext))
-    num_json = len(json_filenames)
-
-    rgb_filenames, num_files = check_num_images(input_rgb_ext, dir_input, num_json)
-    if num_files > 0:
-        print(f'Found {num_files} RGB images')
-
-    segments_filenames, num_files = check_num_images(input_segments_ext, dir_input, num_json)
-    if num_files > 0:
-        print(f'Found {num_files} Segments images')
-
+    # Read Distortion Parameters
     dist = cfg.distortion_parameters
-    D = np.array([dist.k1, dist.k2, dist.k3, dist.k4])
-    print(f'Loaded distortion coefficients: {D}')
-
-    print(f'Output Dir: {dir_output}')
+    dist_coeff = np.array([dist.k1, dist.k2, dist.k3, dist.k4])
+    log.info(f'Loaded distortion coefficients: {dist_coeff}')
 
     crop_resize_output = cfg.crop_and_resize_output
-
-    # process_files(f_json: Path, f_rgb: Union[Path, None], f_segments: Union[Path, None], dir_output: Path,
-    # dist_coeff: np.ndarray, crop_resize_output: bool)
+    log.info(f'Crop and Resize output: {crop_resize_output}')
+    if cfg.linear_interpolation is True:
+        interpolate_mode = DistortMode.LINEAR
+    elif cfg.linear_interpolation is False:
+        interpolate_mode = DistortMode.NEAREST
+    else:
+        raise ValueError(f'Linear interpolation must be True or False. Given: {cfg.linear_interpolation}')
+    log.info(f'Interpolation mode for distortion: {interpolate_mode}')
 
     if int(cfg.workers) > 0:
         max_workers = int(cfg.workers)
     else:
         max_workers = None
+
+    # Read input/output parameters
+    dir_input = Path(cfg.dir.input)
+    if not dir_input.is_dir():
+        raise ValueError(f'Not a directory: {dir_input}')
+    log.info(f'Input Dir: {dir_input}')
+
+    if cfg.dir.output is None:
+        dir_output = dir_input
+    else:
+        dir_output = Path(cfg.dir.output)
+        if not dir_output.exists():
+            dir_output.mkdir(parents=True)
+    log.info(f'Output Dir: {dir_output}')
+
+    ext_input = cfg.file_ext.input
+    log.info(f'Input File Ext: {ext_input}')
+
+    ext_info = cfg.file_ext.info
+    ext_info_type = ext_info.split('.')[-1]
+    if ext_info_type != 'json':
+        raise ValueError(f'Unsupported filetype: {ext_info_type}. Info files must be of type json')
+
+    info_filenames = sorted(dir_input.glob('*' + ext_info))
+    num_json = len(info_filenames)
+
+    input_filenames = sorted(dir_input.glob('*' + ext_input))
+    num_images = len(input_filenames)
+    if num_images < 1:
+        raise ValueError(f'No images found. Searched:\n'
+                         f'  dir: "{dir_input}"\n'
+                         f'  file extention: "{ext_input}"')
+    elif num_images != num_json:
+        raise ValueError(f'Unequal number of json files ({num_json}) and images ({num_images}). Searched:\n'
+                         f'  dir: "{dir_input}"\n'
+                         f'  image file extention: "{ext_input}"')
+    log.info(f'Num Input Files: {num_images}')
+
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        with tqdm(total=len(json_filenames)) as pbar:
-            for _ in executor.map(process_files, json_filenames, rgb_filenames, segments_filenames,
-                                  itertools.repeat(dir_output), itertools.repeat(D), itertools.repeat(crop_resize_output)):
+        with tqdm(total=len(info_filenames)) as pbar:
+            for _ in executor.map(_process_file, info_filenames, input_filenames, itertools.repeat(dir_output),
+                                  itertools.repeat(dist_coeff), itertools.repeat(interpolate_mode),
+                                  itertools.repeat(crop_resize_output)):
                 # Catch any error raised in processes
                 pbar.update()
 
