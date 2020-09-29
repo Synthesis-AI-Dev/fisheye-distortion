@@ -10,20 +10,20 @@ passed via the config file or command line arguments.
 ## Usage
 The arguments for the script are passed via the config file. All the parameters in the
  config file can be overriden from the command line. You must specify:
- - the input dir in which to
+ - The `input dir` in which to
  search for files, 
- - the extention of the filenames (eg: .rgb.png, .segments.png)
- - Whether to use linear interpolation during distortion. For RGB images, using linear interpolation will give 
-   smoother results. Other types of images (masks, normals, depth) should never use linear interpolation
+ - The `filename extention` of the input files (eg: .rgb.png, .segments.png)
+ - Whether to use linear `interpolation` during distortion. For RGB images, using linear interpolation will give 
+   smoother results. Other types of images (masks, normals, depth) should never use linear interpolation.
 
 ### Examples
 
-- Distorting RGB images 
+- Distorting RGB images: Use linear interpolation to get smoother results 
 ```bash
 python apply_fisheye_distortion.py dir.input=samples/ file_ext.input=.rgb.png linear_interpolation=True
 ```
 
-- Distorting Masks
+- Distorting Masks: Use nearest neighbor interpolation to preserve correct values
 ```bash
 python apply_fisheye_distortion.py dir.input=samples/ file_ext.input=.segments.png
 ```
