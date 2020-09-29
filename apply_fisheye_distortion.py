@@ -78,10 +78,10 @@ def distort_image(img: np.ndarray, cam_intr: np.ndarray, dist_coeff: np.ndarray,
 
     if imdtype == np.uint8:
         # RGB Image
-        img_dist = img_dist.clip(0, 255).astype(np.uint8)
+        img_dist = img_dist.round().clip(0, 255).astype(np.uint8)
     elif imdtype == np.uint16:
         # Mask
-        img_dist = img_dist.clip(0, 65535).astype(np.uint16)
+        img_dist = img_dist.round().clip(0, 65535).astype(np.uint16)
     elif imdtype == np.float16 or imdtype == np.float32 or imdtype == np.float64:
         img_dist = img_dist.astype(imdtype)
     else:
