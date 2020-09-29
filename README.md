@@ -9,12 +9,79 @@ passed via the config file or command line arguments.
 
 ## Usage
 The arguments for the script are passed via the config file. All the parameters in the
- config file can be overriden from the command line:
+ config file can be overriden from the command line. You must specify:
+ - the input dir in which to
+ search for files, 
+ - the extention of the filenames (eg: .rgb.png, .segments.png)
+ - Whether to use linear interpolation during distortion. For RGB images, using linear interpolation will give 
+   smoother results. Other types of images (masks, normals, depth) should never use linear interpolation
+
+### Examples
+
+- Distorting RGB images 
 ```bash
-python apply_fisheye_distortion.py dir_input=images resize_output.h=1024 resize_output.w=768
+python apply_fisheye_distortion.py dir.input=samples/ file_ext.input=.rgb.png linear_interpolation=True
 ```
 
+- Distorting Masks
+```bash
+python apply_fisheye_distortion.py dir.input=samples/ file_ext.input=.segments.png
+```
+
+- Saving output files to a different directory. A new directory will be created if it does not exist.
+```bash
+python apply_fisheye_distortion.py dir.output=samples/output
+```
+
+### Config file
+You can edit the config file, `config.yaml`, to customize the default parameters:
+
+```yaml
+dir:
+  input: samples/
+  output: null  # If not specified, outputs files to same dir as input.
+
+file_ext:
+  input: .rgb.png  # The files you want to apply distortion to
+  info: .info.json  # Contains camera intrinsics
+
+linear_interpolation: False  # Enable Linear for RGB images. Else use nearest-neighbor for masks, normals and depth.
+crop_and_resize_output: True  # Disable to get original distorted image. Else output will be of same resolution as input.
+workers: 0  # How many processes to use to convert files. 0 for all cores in machine.
+
+distortion_parameters:
+  # Ref: https://docs.opencv.org/4.4.0/db/d58/group__calib3d__fisheye.html
+  # These are the distortion parameters of a fisheye camera model as defined in the fisheye module of OpenCV 4.4.0
+  k1: 0.17149
+  k2: -0.27191
+  k3: 0.25787
+  k4: -0.08054
+
+
+# Hydra specific params.
+hydra:
+    output_subdir: null  # Disable saving of config files.
+    run:
+        dir: .  # Set working dir to current directory
+
+defaults:
+    # Disable log files
+    - hydra/job_logging: default
+    - hydra/hydra_logging: disabled
+```
+
+## Install
+
+### Pip
+This script requires Python 3.7 or greater. The dependencies can be installed via pip:
+
+```bash
+pip install requirements.txt
+```
+
+### Docker
 Alternately, you can use the provided dockerfile. 
+
 ```bash
 # Build the docker image
 bash docker_build.sh
@@ -28,39 +95,6 @@ $ python apply_fisheye_distortion.py dir_input=/data
 
 This will process all the images found in the container's `/data` directory. Modify the
 `docker_run.sh` script to change which host directory is mounted to the container's `/data`.
-
-### Config file
-You can edit the config file, `config.yaml`, to customize the default parameters:
-```yaml
-dir_input: images/
-dir_output: images/
-input_rgb_ext: .rgb.png  # Distortion will be applied to all images matching this extension
-input_json_ext: .json  # The camera intrinsics are loaded from this json file
-
-distortion_parameters:
-  # Ref: https://docs.opencv.org/4.4.0/db/d58/group__calib3d__fisheye.html
-  # These are the distortion parameters of the fisheye camera model as defined in the fisheye module of OpenCV 4.4.0
-  k1: 0.17149
-  k2: -0.27191
-  k3: 0.25787
-  k4: -0.08054
-
-resize_output:
-  # The output of distortion script isn't exactly the aspect ratio of input due to rounding to integer pixel values.
-  # We resize output to get exact aspect ratio back. Set to 0 to disable resize.
-  h: 768
-  w: 1024
-
-dev:
-  crop_output: True  # Whether to crop the output distorted image.
-
-```
-
-## Install
-The dependencies can be installed via pip:
-```bash
-pip install requirements.txt
-```
 
 ## Detailed Description
 From OpenCV [docs](https://docs.opencv.org/4.4.0/db/d58/group__calib3d__fisheye.html),

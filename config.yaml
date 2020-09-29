@@ -1,21 +1,31 @@
-dir_input: images/
-dir_output: images/
-input_rgb_ext: .rgb.png  # Distortion will be applied to all images matching this extension
-input_json_ext: .json  # The camera intrinsics are loaded from this json file
+dir:
+  input: samples/
+  output: null  # If not specified, outputs files to same dir as input.
+
+file_ext:
+  input: .rgb.png  # The files you want to apply distortion to
+  info: .info.json  # Contains camera intrinsics
+
+linear_interpolation: False  # Enable Linear for RGB images. Else use nearest-neighbor for masks, normals and depth.
+crop_and_resize_output: True  # Disable to get original distorted image. Else output will be of same resolution as input.
+workers: 0  # How many processes to use to convert files. 0 for all cores in machine.
 
 distortion_parameters:
   # Ref: https://docs.opencv.org/4.4.0/db/d58/group__calib3d__fisheye.html
-  # These are the distortion parameters of the fisheye camera model as defined in the fisheye module of OpenCV 4.4.0
+  # These are the distortion parameters of a fisheye camera model as defined in the fisheye module of OpenCV 4.4.0
   k1: 0.17149
   k2: -0.27191
   k3: 0.25787
   k4: -0.08054
 
-resize_output:
-  # The output of distortion script isn't exactly the aspect ratio of input due to rounding to integer pixel values.
-  # We resize output to get exact aspect ratio back. Set to 0 to disable resize.
-  h: 768
-  w: 1024
 
-dev:
-  crop_output: True  # Whether to crop the output distorted image.
+# Hydra specific params.
+hydra:
+    output_subdir: null  # Disable saving of config files.
+    run:
+        dir: .  # Set working dir to current directory
+
+defaults:
+    # Disable log files
+    - hydra/job_logging: default
+    - hydra/hydra_logging: disabled
