@@ -197,18 +197,22 @@ def main(cfg: DictConfig):
 
     info_filenames = sorted(dir_input.glob('*' + ext_info))
     num_json = len(info_filenames)
+    log.info(f'Num Info Files: {num_json}')
+    if num_json < 1:
+        raise ValueError(f'No info json files found. Searched:\n'
+                         f'  dir: "{dir_input}"\n'
+                         f'  file extention: "{ext_info}"')
 
     input_filenames = sorted(dir_input.glob('*' + ext_input))
     num_images = len(input_filenames)
+    log.info(f'Num Input Files: {num_images}')
     if num_images < 1:
         raise ValueError(f'No images found. Searched:\n'
                          f'  dir: "{dir_input}"\n'
                          f'  file extention: "{ext_input}"')
-    elif num_images != num_json:
-        raise ValueError(f'Unequal number of json files ({num_json}) and images ({num_images}). Searched:\n'
-                         f'  dir: "{dir_input}"\n'
-                         f'  image file extention: "{ext_input}"')
-    log.info(f'Num Input Files: {num_images}')
+
+    if num_images != num_json:
+        raise ValueError(f'Unequal number of json files ({num_json}) and images ({num_images}) in dir: "{dir_input}"')
 
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
         with tqdm(total=len(info_filenames)) as pbar:
