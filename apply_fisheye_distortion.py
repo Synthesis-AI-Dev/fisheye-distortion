@@ -148,10 +148,7 @@ def main(cfg: DictConfig):
     """This script creates fisheye distortion in images, using the OpenCV 4.4 fisheye camera model
     Look at equations in detailed description at: https://docs.opencv.org/4.4.0/db/d58/group__calib3d__fisheye.html
 
-    The dir of images to convert must contain the camera intrinsics, in pixels, in a text file.
-    The dimensions of output of distortion is ~58% of input image and may not be of the exact same aspect ratio due
-    to rounding of pixel co-ordinate. To counter that, we resize the output according to config file.
-
+    After distortion, the image size will be reduced. To counter that, we resize the output back to original dimensions.
     The parameters in config file can be modified from the command line.
     """
     log = logging.getLogger(__name__)
