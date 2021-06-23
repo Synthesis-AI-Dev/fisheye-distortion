@@ -22,7 +22,8 @@ class DistortMode(enum.Enum):
 
 
 def distort_image(img: np.ndarray, cam_intr: np.ndarray, dist_coeff: np.ndarray,
-                  mode: DistortMode = DistortMode.LINEAR, crop_output: bool = True) -> np.ndarray:
+                  mode: DistortMode = DistortMode.LINEAR, crop_output: bool = True,
+                  crop_type: str = "corner") -> np.ndarray:
     """Apply fisheye distortion to an image
 
     Args:
@@ -35,6 +36,10 @@ def distort_image(img: np.ndarray, cam_intr: np.ndarray, dist_coeff: np.ndarray,
                             RGB images = linear, Mask/Surface Normals/Depth = nearest
         crop_output (bool): Whether to crop the output distorted image into a rectangle. The 4 corners of the input
                             image will be mapped to 4 corners of the distorted image for cropping.
+        crop_type (str): How to crop.
+            "corner": We crop to the corner points of the original image, maintaining FOV at the top edge of image.
+            "middle": We take the widest points along the middle of the image (height and width). There will be black
+                      pixels on the corners. To counter this, original image has to be higher FOV than the desired output.
 
     Returns:
         numpy.ndarray: The distorted image, same resolution as input image. Unmapped pixels will be black in color.
@@ -96,10 +101,20 @@ def distort_image(img: np.ndarray, cam_intr: np.ndarray, dist_coeff: np.ndarray,
         distorted_px = cv2.convertPointsFromHomogeneous(distorted_px)  # Shape: (N, 1, 2)
         distorted_px = cv2.fisheye.distortPoints(distorted_px, cam_intr, dist_coeff)  # shape: (N, 1, 2)
         distorted_px = distorted_px.reshape((h, w, 2))
-        # Get the corners. Round values up/down accordingly to avoid invalid pixel selection.
-        top_left = np.ceil(distorted_px[0, 0, :]).astype(np.int)
-        bottom_right = np.floor(distorted_px[(h - 1), (w - 1), :]).astype(np.int)
-        img_dist = img_dist[top_left[1]:bottom_right[1], top_left[0]:bottom_right[0], :]
+        if crop_type == "corner":
+            # Get the corners of original image. Round values up/down accordingly to avoid invalid pixel selection.
+            top_left = np.ceil(distorted_px[0, 0, :]).astype(np.int)
+            bottom_right = np.floor(distorted_px[(h - 1), (w - 1), :]).astype(np.int)
+            img_dist = img_dist[top_left[1]:bottom_right[1], top_left[0]:bottom_right[0], :]
+        elif crop_type == "middle":
+            # Get the widest point of original image, then get the corners from that.
+            width_min = np.ceil(distorted_px[int(h / 2), 0, 0]).astype(np.int32)
+            width_max = np.ceil(distorted_px[int(h / 2), -1, 0]).astype(np.int32)
+            height_min = np.ceil(distorted_px[0, int(w / 2), 1]).astype(np.int32)
+            height_max = np.ceil(distorted_px[-1, int(w / 2), 1]).astype(np.int32)
+            img_dist = img_dist[height_min:height_max, width_min:width_max]
+        else:
+            raise ValueError
 
     if chan == 1:
         img_dist = img_dist[:, :, 0]
@@ -108,7 +123,7 @@ def distort_image(img: np.ndarray, cam_intr: np.ndarray, dist_coeff: np.ndarray,
 
 
 def _process_file(f_json: Path, f_img: Path, dir_output: Path, dist_coeff: np.ndarray, mode: DistortMode,
-                  crop_resize_output: bool):
+                  crop_resize_output: bool, crop_type: str = "corner"):
     """Apply fisheye effect to file and save output
     Args:
         f_json (Path): Json file containing camera intrinsics
@@ -119,16 +134,20 @@ def _process_file(f_json: Path, f_img: Path, dir_output: Path, dist_coeff: np.nd
                               - Linear -> RGB images
                               - Nearest -> Masks, Surface Normals and Depth images
         crop_resize_output (bool): Whether the output should be cropped to rectange and resized to original dimensions
+        crop_type (str): How to crop.
+            "corner": We crop to the corner points of the original image, maintaining FOV at the top edge of image.
+            "middle": We take the widest points along the middle of the image (height and width). There will be black
+                      pixels on the corners. To counter this, original image has to be higher FOV than the desired output.
     """
     # Load Camera intrinsics and RGB image
     with f_json.open() as json_file:
         metadata = json.load(json_file)
         metadata = OmegaConf.create(metadata)
-    K = np.array(metadata.camera.intrinsics, dtype=np.float32)
+    cam_intr = np.array(metadata.camera.intrinsics, dtype=np.float32)
     img = cv2.imread(str(f_img), cv2.IMREAD_UNCHANGED | cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
 
     # Apply distortion
-    dist_img = distort_image(img, K, dist_coeff, mode, crop_output=crop_resize_output)
+    dist_img = distort_image(img, cam_intr, dist_coeff, mode, crop_output=crop_resize_output, crop_type=crop_type)
     if crop_resize_output:
         h, w = img.shape[:2]
         dist_img = cv2.resize(dist_img, (w, h), cv2.INTER_CUBIC)
@@ -160,6 +179,8 @@ def main(cfg: DictConfig):
 
     crop_resize_output = cfg.crop_and_resize_output
     log.info(f'Crop and Resize output: {crop_resize_output}')
+    crop_type = cfg.crop_type
+    log.info(f'Crop Type: {crop_type}')
     if cfg.linear_interpolation is True:
         interpolate_mode = DistortMode.LINEAR
     elif cfg.linear_interpolation is False:
@@ -218,7 +239,7 @@ def main(cfg: DictConfig):
         with tqdm(total=len(info_filenames)) as pbar:
             for _ in executor.map(_process_file, info_filenames, input_filenames, itertools.repeat(dir_output),
                                   itertools.repeat(dist_coeff), itertools.repeat(interpolate_mode),
-                                  itertools.repeat(crop_resize_output)):
+                                  itertools.repeat(crop_resize_output), itertools.repeat(crop_type)):
                 # Catch any error raised in processes
                 pbar.update()
 
