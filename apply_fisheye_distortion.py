@@ -144,7 +144,12 @@ def _process_file(f_json: Path, f_img: Path, dir_output: Path, dist_coeff: np.nd
         metadata = json.load(json_file)
         metadata = OmegaConf.create(metadata)
     cam_intr = np.array(metadata.camera.intrinsics, dtype=np.float32)
-    img = cv2.imread(str(f_img), cv2.IMREAD_UNCHANGED | cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
+    if f_img.suffix == '.tif' or f_img.suffix == '.tiff':
+        img = tifffile.imread(str(f_img))
+        if img.dtype == np.float16:
+            img = img.astype(np.float32)
+    else:
+        img = cv2.imread(str(f_img), cv2.IMREAD_UNCHANGED | cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
 
     # Apply distortion
     dist_img = distort_image(img, cam_intr, dist_coeff, mode, crop_output=crop_resize_output, crop_type=crop_type)
