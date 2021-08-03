@@ -18,6 +18,7 @@ distortion_parameters:
   k3: 0.25787
   k4: -0.08054
 
+crop_type: corner
 
 # Hydra specific params.
 hydra:
