@@ -155,7 +155,13 @@ def _process_file(f_json: Path, f_img: Path, dir_output: Path, dist_coeff: np.nd
     dist_img = distort_image(img, cam_intr, dist_coeff, mode, crop_output=crop_resize_output, crop_type=crop_type)
     if crop_resize_output:
         h, w = img.shape[:2]
-        dist_img = cv2.resize(dist_img, (w, h), cv2.INTER_CUBIC)
+        if mode == DistortMode.NEAREST:
+            x_grid = np.linspace(0, dist_img.shape[0] - 1, h).astype(np.uint32)
+            y_grid = np.linspace(0, dist_img.shape[1] - 1, w).astype(np.uint32)
+            grid = tuple(np.meshgrid(x_grid, y_grid, indexing='ij'))
+            dist_img = dist_img[grid]
+        else:
+            dist_img = cv2.resize(dist_img, (w, h), cv2.INTER_CUBIC)
 
     # Save Result
     out_filename = dir_output / f"{f_img.stem}.dist{f_img.suffix}"
